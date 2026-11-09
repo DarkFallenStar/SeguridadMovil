@@ -118,3 +118,4 @@ SeguridadMovil/
 - [ ] **Fase 7:** Step-Up Authentication (403 mfa_required) y Anti-Replay Cache (409 Conflict).
 - [ ] **Fase 8:** Integración global End-to-End.
 - [ ] **Fase 9:** Auditoría final y pruebas de sustentación en vivo.
+

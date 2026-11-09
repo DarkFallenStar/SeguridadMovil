@@ -1,6 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import { HealthResponse, ApiErrorResponse } from './types/index.js';
+import { oauthRouter } from './routes/oauthRoutes.js';
 
 export const app = express();
 
@@ -8,6 +9,9 @@ export const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Rutas de OAuth 2.0 y PKCE
+app.use('/oauth', oauthRouter);
 
 // Endpoint de verificacion de salud (Health Check)
 app.get('/health', (_req: Request, res: Response<HealthResponse>) => {
@@ -36,3 +40,4 @@ app.use((err: Error, _req: Request, res: Response<ApiErrorResponse>, _next: Next
     message: err.message || 'Error interno del servidor.',
   });
 });
+

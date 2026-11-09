@@ -18,14 +18,18 @@ export default function App() {
     mfaVerified: false,
   });
 
-  const handleLoginSuccess = () => {
-    // Simulación de sesión inicial para la estructura base de Fase 1
+  const handleLoginSuccess = (sessionData: {
+    accessToken: string;
+    refreshToken: string;
+    user: { id: string; email: string; name: string };
+  }) => {
+    // Almacenamiento volátil del access_token en memoria (RAM)
     setSession({
-      userId: 'user_123',
-      email: 'estudiante@unisabana.edu.co',
-      accessToken: 'sample_in_memory_access_token_jwt',
-      accessTokenExpiresAt: Date.now() + 5 * 60 * 1000, // 5 min
-      hasRefreshToken: true,
+      userId: sessionData.user.id,
+      email: sessionData.user.email,
+      accessToken: sessionData.accessToken,
+      accessTokenExpiresAt: Date.now() + 5 * 60 * 1000, // 5 minutos exactos (300 segundos)
+      hasRefreshToken: !!sessionData.refreshToken,
       mfaVerified: false,
     });
     setCurrentScreen('DASHBOARD');

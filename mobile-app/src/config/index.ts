@@ -23,3 +23,4 @@ export const CONFIG = {
     TOTP_SEED: 'unisabana_secure_totp_seed',
   },
 };
+

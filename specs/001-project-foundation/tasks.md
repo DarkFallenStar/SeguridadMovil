@@ -43,3 +43,4 @@
 - [ ] Servidor backend probado con `GET /health`.
 - [ ] Actualización de `PROJECT_STATUS.md`.
 - [ ] Commit y push al repositorio remoto en GitHub.
+

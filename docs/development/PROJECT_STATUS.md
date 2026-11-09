@@ -1,7 +1,7 @@
 # ESTADO DEL PROYECTO (PROJECT STATUS)
 **Proyecto:** Taller de Seguridad Móvil (UniSabana)  
 **Última actualización:** 2026-11-08  
-**Fase actual:** FASE 1 COMPLETADA — Esperando aprobación para iniciar FASE 2  
+**Fase actual:** FASE 2 COMPLETADA — Esperando aprobación para iniciar FASE 3  
 **Repositorio Remoto:** https://github.com/DarkFallenStar/SeguridadMovil.git  
 
 ---
@@ -12,8 +12,8 @@
 | :--- | :--- | :--- | :--- | :--- |
 | **Fase 0** | Auditoría, diagnóstico y marco SDD | **Completado** | `.specify/memory/constitution.md` | **Aprobado** |
 | **Fase 1** | Arquitectura y estructura base (Monorepo) | **Completado** | `specs/001-project-foundation/` | **Aprobado** |
-| **Fase 2** | OAuth 2.0 con PKCE & Deep Linking | **Siguiente** | `specs/002-oauth-pkce/` | Pendiente |
-| **Fase 3** | Almacenamiento seguro nativo y Silent Refresh Queue | Planificado | `specs/003-token-management/` | Pendiente |
+| **Fase 2** | OAuth 2.0 con PKCE & Deep Linking | **Completado** | `specs/002-oauth-pkce/` | **Aprobado** |
+| **Fase 3** | Almacenamiento seguro nativo y Silent Refresh Queue | **Siguiente** | `specs/003-token-management/` | Pendiente |
 | **Fase 4** | Algoritmo TOTP desde cero (RFC 6238 en Modo Avión) | Planificado | `specs/004-totp-authenticator/` | Pendiente |
 | **Fase 5** | Configuración de Semilla TOTP (QR Camera + Manual) | Planificado | `specs/005-seed-provisioning/` | Pendiente |
 | **Fase 6** | Backend de autenticación, bóveda y sesiones | Planificado | `specs/006-auth-backend/` | Pendiente |
@@ -37,11 +37,14 @@
 
 ---
 
-## 3. CHECKLIST DE VERIFICACIÓN DE FASE 1
-- [x] Estructura Monorepo (`mobile-app/` y `backend-auth/`) creada y aislada.
-- [x] Tipado estricto verificado en `mobile-app` (`npx tsc --noEmit` exitoso).
-- [x] Tipado estricto verificado en `backend-auth` (`npx tsc --noEmit` exitoso).
-- [x] Servidor Express configurado con TypeScript, CORS, JSON parser y `GET /health`.
-- [x] Compilación de backend probada (`npm run build`).
-- [x] Pantallas base implementadas: Login, Dashboard, Bóveda Crítica y Autenticador TOTP.
-- [x] `README.md` actualizado con instrucciones de instalación y arranque.
+## 3. CHECKLIST DE VERIFICACIÓN DE FASE 2 (OAUTH 2.0 + PKCE)
+- [x] Generador criptográfico de `code_verifier` (64 caracteres URL-safe de alta entropía).
+- [x] Generador de `code_challenge` mediante SHA-256 codificado en Base64URL sin relleno (*unpadded*).
+- [x] Generador de parámetro `state` aleatorio (32 chars) y validación estricta Anti-CSRF al retornar del Deep Link.
+- [x] Configuración del esquema `"scheme": "unisabana-auth"` en `mobile-app/app.json`.
+- [x] Navegador seguro del sistema (`expo-web-browser`) con `WebBrowser.openAuthSessionAsync` (WebViews prohibidas).
+- [x] Backend OAuth Server: endpoints `GET /oauth/authorize`, `POST /oauth/authorize` y `POST /oauth/token`.
+- [x] Validación PKCE en backend: comprobación en tiempo constante de `SHA256(verifier) === challenge`.
+- [x] Single-use / Anti-Replay del `authorization_code` (invalidado inmediatamente tras el intercambio).
+- [x] Emisión de `access_token` JWT con TTL de exactamente 5 minutos (300s) y `refresh_token` con 30 días.
+- [x] Batería de 5 pruebas automatizadas superadas al 100% (`backend-auth/src/tests/pkce.test.ts`).
