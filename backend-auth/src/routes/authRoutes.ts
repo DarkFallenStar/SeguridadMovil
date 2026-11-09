@@ -2,6 +2,12 @@ import { Router, Request, Response } from 'express';
 import { refreshTokensStore, DEFAULT_USER } from '../services/oauthService.js';
 import { signJwt } from '../services/jwtService.js';
 import { tokenController } from '../controllers/oauthController.js';
+import {
+  getUserTotpSecret,
+  setUserTotpSecret,
+  buildOtpAuthUri,
+  generateTOTP,
+} from '../services/totpValidator.js';
 
 export const authRouter = Router();
 
@@ -96,5 +102,151 @@ authRouter.post('/logout', (req: Request, res: Response) => {
   return res.status(200).json({
     message: 'Sesión revocada exitosamente en el servidor.',
   });
+});
+
+/**
+ * GET /auth/mfa/setup
+ * Entrega la configuración de aprovisionamiento TOTP (URI otpauth:// y código QR escaneable)
+ * para demostrar en vivo la Prueba de Aceptación #2 (escaneo simultáneo en App y Google Authenticator).
+ */
+authRouter.get('/mfa/setup', (req: Request, res: Response) => {
+  const userId = typeof req.query.userId === 'string' ? req.query.userId : DEFAULT_USER.id;
+  const secret = getUserTotpSecret(userId);
+  const otpauthUri = buildOtpAuthUri(secret, DEFAULT_USER.email, 'UniSabana');
+  const currentCode = generateTOTP(secret);
+
+  if (req.query.format === 'json' || req.headers.accept?.includes('application/json')) {
+    return res.status(200).json({
+      userId,
+      email: DEFAULT_USER.email,
+      issuer: 'UniSabana',
+      secret,
+      algorithm: 'SHA1',
+      digits: 6,
+      period: 30,
+      otpauthUri,
+      currentServerCode: currentCode,
+    });
+  }
+
+  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=10&data=${encodeURIComponent(otpauthUri)}`;
+
+  const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aprovisionamiento QR TOTP — UniSabana</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: #0F172A;
+      color: #F8FAFC;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    .card {
+      background-color: #1E293B;
+      border: 1px solid #334155;
+      border-radius: 16px;
+      padding: 28px;
+      max-width: 460px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+    }
+    .badge {
+      display: inline-block;
+      background-color: #38BDF8;
+      color: #0F172A;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 4px 10px;
+      border-radius: 12px;
+      margin-bottom: 12px;
+    }
+    h1 { font-size: 20px; margin: 0 0 8px 0; }
+    p { font-size: 13px; color: #94A3B8; margin: 0 0 18px 0; line-height: 18px; }
+    .qr-box {
+      background: #FFFFFF;
+      padding: 14px;
+      border-radius: 12px;
+      display: inline-block;
+      margin-bottom: 18px;
+    }
+    .meta {
+      background: #0F172A;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 12px;
+      text-align: left;
+      font-size: 12px;
+      margin-bottom: 14px;
+    }
+    .row { display: flex; justify-content: space-between; margin-bottom: 6px; gap: 10px; }
+    .row:last-child { margin-bottom: 0; }
+    .label { color: #64748B; }
+    .val { color: #38BDF8; font-family: monospace; font-weight: 700; word-break: break-all; text-align: right; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge">FASE 5 • APROVISIONAMIENTO TOTP (RFC 6238)</div>
+    <h1>Escanea con tu App y Google Authenticator</h1>
+    <p>Apunta la cámara de tu app móvil ("📷 Escanear QR") y de Google Authenticator a este código QR para demostrar 100% de paridad.</p>
+    <div class="qr-box">
+      <img src="${qrImageUrl}" width="220" height="220" alt="QR otpauth://totp/" />
+    </div>
+    <div class="meta">
+      <div class="row"><span class="label">Cuenta:</span><span class="val">${DEFAULT_USER.email}</span></div>
+      <div class="row"><span class="label">Semilla Base32:</span><span class="val">${secret}</span></div>
+      <div class="row"><span class="label">Parámetros:</span><span class="val">SHA1 • 6 dígitos • 30s</span></div>
+      <div class="row"><span class="label">URI completa:</span><span class="val">${otpauthUri}</span></div>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  return res.status(200).send(html);
+});
+
+/**
+ * POST /auth/mfa/setup
+ * Sincroniza en el servidor la semilla Base32 o URI otpauth:// configurada por el usuario en su dispositivo.
+ */
+authRouter.post('/mfa/setup', (req: Request, res: Response) => {
+  try {
+    const { secret, userId } = req.body;
+    if (!secret || typeof secret !== 'string') {
+      return res.status(400).json({
+        error: 'invalid_secret',
+        message: 'Se requiere una semilla Base32 o URI otpauth:// válida.',
+      });
+    }
+
+    const targetUserId = typeof userId === 'string' && userId ? userId : DEFAULT_USER.id;
+    const parsed = setUserTotpSecret(targetUserId, secret);
+
+    console.log(`[AUTH SERVER] 🔐 Semilla TOTP sincronizada para ${targetUserId} (issuer: ${parsed.issuer})`);
+
+    return res.status(200).json({
+      status: 'ok',
+      message: 'Semilla TOTP validada y sincronizada en el servidor.',
+      secret: parsed.secret,
+      issuer: parsed.issuer,
+      label: parsed.label,
+      otpauthUri: parsed.otpauthUri,
+    });
+  } catch (err: any) {
+    return res.status(400).json({
+      error: 'invalid_totp_config',
+      message: err?.message || 'Configuración TOTP incompatible.',
+    });
+  }
 });
 

@@ -1,5 +1,5 @@
 /**
- * Validador Criptográfico TOTP en Backend (RFC 6238 y RFC 4226)
+ * Validador Criptográfico y Gestor de Aprovisionamiento TOTP en Backend (RFC 6238 y RFC 4226)
  * Implementado desde cero con node:crypto (HMAC-SHA1 + Dynamic Truncation) sin librerías de alto nivel.
  * Soporta tolerancia a desfase de reloj (Clock Skew) en las ventanas C-1, C y C+1.
  */
@@ -12,28 +12,161 @@ export const DEFAULT_TOTP_SECRET_BASE32 =
 export const TOTP_STEP_SECONDS = 30;
 export const TOTP_DIGITS = 6;
 
+// Almacén en memoria (Decisión 1A) de secretos TOTP por usuario
+const userTotpSecretsStore = new Map<string, string>();
+
+export interface ParsedTotpConfig {
+  secret: string;
+  label: string;
+  issuer: string;
+  algorithm: 'SHA1';
+  digits: 6;
+  period: 30;
+  otpauthUri: string;
+}
+
+/**
+ * Construye la URI estándar otpauth://totp/ según el formato de Google Authenticator y la guía del taller.
+ */
+export function buildOtpAuthUri(
+  secret: string = DEFAULT_TOTP_SECRET_BASE32,
+  accountEmail: string = 'estudiante@unisabana.edu.co',
+  issuer: string = 'UniSabana'
+): string {
+  const cleanSecret = secret.replace(/[\s\-=]+/g, '').toUpperCase();
+  return `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(accountEmail)}?secret=${cleanSecret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`;
+}
+
+/**
+ * Valida estrictamente una semilla Base32 o una URI otpauth://totp/ completa.
+ * Rechaza parámetros incompatibles (hotp, SHA256/512, dígitos != 6 o periodo != 30).
+ */
+export function parseTotpInput(
+  input: string,
+  defaultLabel: string = 'UniSabana:estudiante@unisabana.edu.co',
+  defaultIssuer: string = 'UniSabana'
+): ParsedTotpConfig {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    throw new Error('La semilla Base32 o URI otpauth:// está vacía.');
+  }
+
+  let rawSecret = trimmed;
+  let label = defaultLabel;
+  let issuer = defaultIssuer;
+
+  if (trimmed.includes('://')) {
+    if (!trimmed.toLowerCase().startsWith('otpauth://')) {
+      throw new Error('Esquema URI inválido: se requiere otpauth://.');
+    }
+
+    const withoutScheme = trimmed.slice('otpauth://'.length);
+    const slashIndex = withoutScheme.indexOf('/');
+    const queryIndex = withoutScheme.indexOf('?');
+
+    const type = (slashIndex !== -1 ? withoutScheme.slice(0, slashIndex) : withoutScheme).toLowerCase();
+    if (type !== 'totp') {
+      throw new Error(`Tipo OTP '${type}' no soportado. Se requiere 'totp'.`);
+    }
+
+    if (slashIndex !== -1) {
+      const rawLabel =
+        queryIndex !== -1
+          ? withoutScheme.slice(slashIndex + 1, queryIndex)
+          : withoutScheme.slice(slashIndex + 1);
+      if (rawLabel) {
+        label = decodeURIComponent(rawLabel);
+      }
+    }
+
+    const queryString = queryIndex !== -1 ? withoutScheme.slice(queryIndex + 1) : '';
+    const params = new URLSearchParams(queryString);
+
+    const secretParam = params.get('secret');
+    if (!secretParam) {
+      throw new Error('La URI otpauth:// no contiene el parámetro "secret".');
+    }
+    rawSecret = secretParam;
+
+    const issuerParam = params.get('issuer');
+    if (issuerParam) {
+      issuer = issuerParam;
+    }
+
+    const algorithmParam = params.get('algorithm');
+    if (algorithmParam && algorithmParam.toUpperCase() !== 'SHA1') {
+      throw new Error(`Algoritmo '${algorithmParam}' incompatible. Se requiere SHA1.`);
+    }
+
+    const digitsParam = params.get('digits');
+    if (digitsParam && Number(digitsParam) !== 6) {
+      throw new Error(`Número de dígitos '${digitsParam}' incompatible. Se requieren 6 dígitos.`);
+    }
+
+    const periodParam = params.get('period');
+    if (periodParam && Number(periodParam) !== 30) {
+      throw new Error(`Periodo '${periodParam}s' incompatible. Se requieren 30 segundos.`);
+    }
+  }
+
+  const cleanedSecret = rawSecret.replace(/[\s\-=]+/g, '').toUpperCase();
+  if (cleanedSecret.length < 8) {
+    throw new Error('La semilla Base32 debe tener al menos 8 caracteres.');
+  }
+
+  for (let i = 0; i < cleanedSecret.length; i++) {
+    if (BASE32_ALPHABET.indexOf(cleanedSecret[i]) === -1) {
+      throw new Error(`Carácter Base32 inválido: '${cleanedSecret[i]}'`);
+    }
+  }
+
+  const accountPart = label.includes(':') ? label.split(':')[1] : label;
+
+  return {
+    secret: cleanedSecret,
+    label,
+    issuer,
+    algorithm: 'SHA1',
+    digits: 6,
+    period: 30,
+    otpauthUri: buildOtpAuthUri(cleanedSecret, accountPart, issuer),
+  };
+}
+
+/**
+ * Obtiene la semilla Base32 activa del usuario (por defecto JBSWY3DPEHPK3PXP).
+ */
+export function getUserTotpSecret(userId: string = 'user_unisabana_01'): string {
+  return userTotpSecretsStore.get(userId) || DEFAULT_TOTP_SECRET_BASE32;
+}
+
+/**
+ * Registra o actualiza la semilla Base32 activa del usuario tras validarla.
+ */
+export function setUserTotpSecret(
+  userId: string,
+  secretOrUri: string
+): ParsedTotpConfig {
+  const parsed = parseTotpInput(secretOrUri);
+  userTotpSecretsStore.set(userId, parsed.secret);
+  return parsed;
+}
+
 /**
  * Decodifica una cadena Base32 (RFC 4648) a Buffer de bytes.
  */
 export function base32ToBuffer(rawInput: string): Buffer {
-  const cleaned = rawInput.replace(/[\s\-=]+/g, '').toUpperCase();
-  if (!cleaned) {
-    throw new Error('Semilla Base32 vacía.');
-  }
+  const { secret } = parseTotpInput(rawInput);
 
-  const outputLength = Math.floor((cleaned.length * 5) / 8);
+  const outputLength = Math.floor((secret.length * 5) / 8);
   const bytes = Buffer.alloc(outputLength);
 
   let bitsBuffer = 0;
   let bitsCount = 0;
   let byteIndex = 0;
 
-  for (let i = 0; i < cleaned.length; i++) {
-    const charValue = BASE32_ALPHABET.indexOf(cleaned[i]);
-    if (charValue === -1) {
-      throw new Error(`Carácter Base32 inválido: '${cleaned[i]}'`);
-    }
-
+  for (let i = 0; i < secret.length; i++) {
+    const charValue = BASE32_ALPHABET.indexOf(secret[i]);
     bitsBuffer = (bitsBuffer << 5) | charValue;
     bitsCount += 5;
 
@@ -130,4 +263,3 @@ export function verifyTOTPWithClockSkew(
 
   return { valid: false };
 }
-

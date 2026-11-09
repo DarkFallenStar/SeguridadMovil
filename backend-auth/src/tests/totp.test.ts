@@ -13,14 +13,17 @@ import {
   generateHOTPFromBytes,
   generateTOTP,
   verifyTOTPWithClockSkew,
+  parseTotpInput,
+  setUserTotpSecret,
+  getUserTotpSecret,
   DEFAULT_TOTP_SECRET_BASE32,
 } from '../services/totpValidator.js';
 
 function runTotpTests() {
-  console.log('\n🧪 INICIANDO PRUEBAS MATEMÁTICAS TOTP (RFC 6238 / RFC 4226)...\n');
+  console.log('\n🧪 INICIANDO PRUEBAS MATEMÁTICAS Y DE APROVISIONAMIENTO TOTP (RFC 6238 / FASES 4 Y 5)...\n');
 
   let passed = 0;
-  const total = 5;
+  const total = 7;
 
   // TEST 1: Decodificación Base32 (RFC 4648)
   // Semilla ASCII de 20 bytes del RFC 6238: "12345678901234567890"
@@ -97,6 +100,46 @@ function runTotpTests() {
     passed++;
   } else {
     console.error('❌ TEST 5 FALLÓ.');
+  }
+
+  // TEST 6: Interpretación y aprovisionamiento de URI otpauth://totp/ válida (Fase 5)
+  const validUri =
+    'otpauth://totp/UniSabana:estudiante@unisabana.edu.co?secret=JBSWY3DPEHPK3PXP&issuer=UniSabana&algorithm=SHA1&digits=6&period=30';
+  const parsed = setUserTotpSecret('test_user_05', validUri);
+  if (
+    parsed.secret === 'JBSWY3DPEHPK3PXP' &&
+    parsed.issuer === 'UniSabana' &&
+    getUserTotpSecret('test_user_05') === 'JBSWY3DPEHPK3PXP'
+  ) {
+    console.log('✅ TEST 6: Parsing y aprovisionamiento de URI otpauth://totp/ válida SUPERADO.');
+    passed++;
+  } else {
+    console.error('❌ TEST 6 FALLÓ:', parsed);
+  }
+
+  // TEST 7: Rechazo estricto de URIs otpauth:// incompatibles (hotp, SHA256, digits=8, period=60, Base32 inválido)
+  const invalidInputs = [
+    'otpauth://hotp/UniSabana:user?secret=JBSWY3DPEHPK3PXP',
+    'otpauth://totp/UniSabana:user?secret=JBSWY3DPEHPK3PXP&algorithm=SHA256',
+    'otpauth://totp/UniSabana:user?secret=JBSWY3DPEHPK3PXP&digits=8',
+    'otpauth://totp/UniSabana:user?secret=JBSWY3DPEHPK3PXP&period=60',
+    'SEMILLA_INVALIDA_CON_0_1_8_9',
+  ];
+
+  const allRejected = invalidInputs.every((badInput) => {
+    try {
+      parseTotpInput(badInput);
+      return false;
+    } catch {
+      return true;
+    }
+  });
+
+  if (allRejected) {
+    console.log('✅ TEST 7: Rechazo estricto de configuraciones otpauth:// incompatibles SUPERADO.');
+    passed++;
+  } else {
+    console.error('❌ TEST 7 FALLÓ: Alguna URI inválida fue aceptada silenciosamente.');
   }
 
   console.log(`\n🎉 RESULTADO FINAL: ${passed}/${total} PRUEBAS CRIPTOGRÁFICAS TOTP SUPERADAS.\n`);

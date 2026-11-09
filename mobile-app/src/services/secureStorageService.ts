@@ -1,8 +1,7 @@
 /**
  * Servicio de Almacenamiento Seguro Nativo (Hardware Keychain / Keystore)
- * Cumple estrictamente con el Punto 2 del taller:
- * "refresh_token se persiste en el enclave seguro cifrado por hardware
- *  (iOS Keychain / Android Keystore vía expo-secure-store). Vida útil: 30 días."
+ * Custodia en el enclave de hardware tanto el refresh_token (Punto 2)
+ * como la semilla secreta TOTP (Punto 3 / Fase 5), garantizando operación en Modo Avión.
  */
 
 import * as SecureStore from 'expo-secure-store';
@@ -10,65 +9,70 @@ import { Platform } from 'react-native';
 import { CONFIG } from '../config';
 
 const REFRESH_TOKEN_KEY = CONFIG.STORAGE_KEYS.REFRESH_TOKEN;
+const TOTP_SEED_KEY = CONFIG.STORAGE_KEYS.TOTP_SEED;
 
-// Fallback en memoria para entorno Web si SecureStore no está disponible
-let webFallbackRefreshToken: string | null = null;
+// Fallback en memoria exclusivamente para entorno Web donde SecureStore nativo no existe
+const webMemoryFallback = new Map<string, string>();
+
+async function setSecureItem(key: string, value: string): Promise<void> {
+  if (Platform.OS === 'web') {
+    webMemoryFallback.set(key, value);
+    return;
+  }
+  await SecureStore.setItemAsync(key, value, {
+    keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
+  });
+}
+
+async function getSecureItem(key: string): Promise<string | null> {
+  try {
+    if (Platform.OS === 'web') {
+      return webMemoryFallback.get(key) ?? null;
+    }
+    return await SecureStore.getItemAsync(key);
+  } catch (error) {
+    console.error(`[SecureStore Error] No se pudo leer ${key}:`, error);
+    return null;
+  }
+}
+
+async function deleteSecureItem(key: string): Promise<void> {
+  try {
+    if (Platform.OS === 'web') {
+      webMemoryFallback.delete(key);
+      return;
+    }
+    await SecureStore.deleteItemAsync(key);
+  } catch (error) {
+    console.error(`[SecureStore Error] No se pudo eliminar ${key}:`, error);
+  }
+}
 
 export const secureStorageService = {
-  /**
-   * Guarda el refresh_token cifrado en el enclave de seguridad nativo.
-   */
-  async saveRefreshToken(token: string): Promise<void> {
-    try {
-      if (Platform.OS === 'web') {
-        webFallbackRefreshToken = token;
-        return;
-      }
-
-      await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, token, {
-        keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
-      });
-    } catch (error) {
-      console.error('[SecureStore Error] No se pudo guardar el refresh_token:', error);
-      throw error;
-    }
+  saveRefreshToken(token: string): Promise<void> {
+    return setSecureItem(REFRESH_TOKEN_KEY, token);
   },
 
-  /**
-   * Recupera el refresh_token descifrándolo desde el hardware seguro.
-   */
-  async getRefreshToken(): Promise<string | null> {
-    try {
-      if (Platform.OS === 'web') {
-        return webFallbackRefreshToken;
-      }
-
-      return await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
-    } catch (error) {
-      console.error('[SecureStore Error] No se pudo recuperar el refresh_token:', error);
-      return null;
-    }
+  getRefreshToken(): Promise<string | null> {
+    return getSecureItem(REFRESH_TOKEN_KEY);
   },
 
-  /**
-   * Elimina el refresh_token del enclave seguro (Cierre de Sesión).
-   */
-  async deleteRefreshToken(): Promise<void> {
-    try {
-      if (Platform.OS === 'web') {
-        webFallbackRefreshToken = null;
-        return;
-      }
-
-      await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
-    } catch (error) {
-      console.error('[SecureStore Error] No se pudo eliminar el refresh_token:', error);
-    }
+  deleteRefreshToken(): Promise<void> {
+    return deleteSecureItem(REFRESH_TOKEN_KEY);
   },
 
-  /**
-   * Comprueba si el enclave de hardware seguro está disponible en el dispositivo.
-   */
+  saveTotpSeed(seedOrUri: string): Promise<void> {
+    return setSecureItem(TOTP_SEED_KEY, seedOrUri);
+  },
+
+  getTotpSeed(): Promise<string | null> {
+    return getSecureItem(TOTP_SEED_KEY);
+  },
+
+  deleteTotpSeed(): Promise<void> {
+    return deleteSecureItem(TOTP_SEED_KEY);
+  },
+
   async isHardwareSecurityAvailable(): Promise<boolean> {
     if (Platform.OS === 'web') {
       return false;
@@ -76,4 +80,3 @@ export const secureStorageService = {
     return await SecureStore.isAvailableAsync();
   },
 };
-
