@@ -42,3 +42,4 @@ sequenceDiagram
   - `GET /auth/mfa/setup`: Devuelve JSON o renderiza la página HTML de aprovisionamiento con el QR de la URI `otpauth://` oficial.
   - `POST /auth/mfa/setup`: Actualiza la semilla TOTP del usuario en memoria tras validar que sea Base32 válido.
 - `src/tests/totp.test.ts`: Añadir pruebas de validación estricta de URIs `otpauth://` (aceptación de URI válida y rechazo de `digits=8`, `period=60`, `algorithm=SHA256` o `otpauth://hotp/`).
+

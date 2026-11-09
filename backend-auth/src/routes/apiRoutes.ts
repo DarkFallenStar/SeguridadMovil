@@ -54,3 +54,44 @@ apiRouter.post('/test-force-expire', (req: Request, res: Response) => {
   });
 });
 
+/**
+ * GET /api/boveda-critica (y alias GET /api/boveda según Sección 2 y Punto 4 de la Guía)
+ * Protegido mediante Step-Up Authentication:
+ * - Si mfa_verified === false: responde 403 Forbidden con error: "mfa_required" y un step_up_token.
+ * - Si mfa_verified === true: responde 200 OK con los secretos de la Bóveda Crítica.
+ */
+apiRouter.get(['/boveda-critica', '/boveda'], requireAccessToken, (req: Request, res: Response) => {
+  const user = req.user!;
+
+  if (!user.mfa_verified) {
+    // Emitir step_up_token temporal (vigencia corta de 2 minutos para completar el desafío 2FA)
+    const stepUpToken = signJwt(
+      {
+        userId: user.userId,
+        email: user.email,
+        tokenType: 'step_up',
+        mfa_verified: false,
+      },
+      120
+    );
+
+    console.log(`[VAULT GUARD] 🛡️ Acceso denegado (403 mfa_required) para ${user.email}. Emitiendo step_up_token.`);
+
+    return res.status(403).json({
+      error: 'mfa_required',
+      message: 'Este recurso crítico requiere elevación de privilegios mediante segundo factor TOTP (Step-Up 2FA).',
+      step_up_token: stepUpToken,
+    });
+  }
+
+  console.log(`[VAULT GUARD] 🔓 Acceso elevado concedido a Bóveda Crítica para ${user.email} (mfa_verified: true).`);
+
+  return res.status(200).json({
+    secretData: 'LLAVE-MAESTRA-UNISABANA-2026-AES256-GCM-9F8A7B6C',
+    classification: 'TOP_SECRET',
+    accessedAt: new Date().toISOString(),
+    authorizedUser: user.email,
+  });
+});
+
+

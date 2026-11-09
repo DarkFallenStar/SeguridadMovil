@@ -1,7 +1,7 @@
 # ESTADO DEL PROYECTO (PROJECT STATUS)
 **Proyecto:** Taller de Seguridad Móvil (UniSabana)  
 **Última actualización:** 2026-11-08  
-**Fase actual:** FASE 5 COMPLETADA — Esperando aprobación para iniciar FASES 6 Y 7 (Step-Up & Anti-Replay)  
+**Fase actual:** FASES 6 Y 7 COMPLETADAS (4/4 Puntos del Taller Implementados) — Esperando aprobación para FASES 8 Y 9 (Auditoría Final, README y Guía de Sustentación)  
 **Repositorio Remoto:** https://github.com/DarkFallenStar/SeguridadMovil.git  
 
 ---
@@ -15,10 +15,9 @@
 | **Fase 2** | OAuth 2.0 con PKCE & Deep Linking | **Completado** | `specs/002-oauth-pkce/` | **Aprobado** |
 | **Fase 3** | Almacenamiento seguro nativo y Silent Refresh Queue | **Completado** | `specs/003-token-management/` | **Aprobado** |
 | **Fase 4** | Algoritmo TOTP desde cero (RFC 6238 en Modo Avión) | **Completado** | `specs/004-totp-authenticator/` | **Aprobado** |
-| **Fase 5** | Configuración de Semilla TOTP (QR Camera + Manual + SecureStore) | **Completado** | `specs/005-seed-provisioning/` | **En validación usuario** |
-| **Fase 6/7** | Backend Bóveda, Step-Up Authentication y Caché Anti-Replay (TTL 90s) | **Siguiente** | `specs/007-step-up-anti-replay/` | Pendiente |
-| **Fase 8** | Integración global y pulido E2E | Planificado | `specs/008-system-integration/` | Pendiente |
-| **Fase 9** | Pruebas de aceptación, auditoría y sustentación | Planificado | `specs/009-audit-demonstration/` | Pendiente |
+| **Fase 5** | Configuración de Semilla TOTP (QR Camera + Manual + SecureStore) | **Completado** | `specs/005-seed-provisioning/` | **Aprobado** |
+| **Fases 6/7** | Backend Bóveda, Step-Up Authentication y Caché Anti-Replay (TTL 90s) | **Completado** | `specs/007-step-up-anti-replay/` | **En validación usuario** |
+| **Fases 8/9** | Integración global, Matriz de Trazabilidad, `README.md` y Guía de Sustentación (5 min) | **Siguiente** | `specs/009-audit-demonstration/` | Pendiente |
 
 ---
 
@@ -38,16 +37,13 @@
 
 ---
 
-## 3. ESTADO DE CODEBASE MEMORY MCP
-- **Decisión aprobada (`6A`):** Mantener el índice documental SDD (`PROJECT_STATUS.md` + `specs/`) y lecturas quirúrgicas sin instalar binarios externos en el sistema operativo.
-
----
-
-## 4. CHECKLIST DE VERIFICACIÓN DE FASE 5 (CONFIGURACIÓN DEL SECRETO TOTP)
-- [x] Instalación de `expo-camera` compatible con Expo SDK 58 (`npx expo install expo-camera`).
-- [x] Escáner de código QR integrado en `TotpScreen.tsx` (`CameraView` + `useCameraPermissions`).
-- [x] Campo de entrada manual para semillas Base32 o URIs `otpauth://totp/`.
-- [x] Validación estricta de formato `otpauth://totp/`, `secret` Base32, `issuer`, `algorithm=SHA1`, `digits=6` y `period=30` (rechaza configuraciones incompatibles).
-- [x] Almacenamiento cifrado de la semilla TOTP en `expo-secure-store` (`saveTotpSeed` / `getTotpSeed`) garantizando persistencia en Modo Avión.
-- [x] Endpoints `GET /auth/mfa/setup` (vista QR escaneable para sustentación) y `POST /auth/mfa/setup` (sincronización del secreto en el backend).
-- [x] Batería de 7 pruebas unitarias superadas al 100% (`backend-auth/src/tests/totp.test.ts`).
+## 3. CHECKLIST DE VERIFICACIÓN DE FASES 6 Y 7 (STEP-UP AUTHENTICATION & ANTI-REPLAY)
+- [x] Protección de `GET /api/boveda-critica` (y alias `GET /api/boveda`) en `backend-auth/src/routes/apiRoutes.ts`.
+- [x] Rechazo de sesiones normales (`mfa_verified: false`) con `403 Forbidden`, `error: "mfa_required"` y emisión de `step_up_token`.
+- [x] Endpoint `POST /auth/mfa/verify` en `backend-auth/src/routes/authRoutes.ts`.
+- [x] Tolerancia a desfase de reloj (*Clock Skew*) validando en las 3 ventanas: $C-1$ ($t-30\text{s}$), $C$ ($t$) y $C+1$ ($t+30\text{s}$).
+- [x] Caché Anti-Replay en memoria (`Map` en `backend-auth/src/services/antiReplayService.ts`) con TTL de 90 segundos.
+- [x] Rechazo inmediato con `409 Conflict: Replay Attack Detected` al intentar reutilizar un código TOTP dentro de los 90 segundos.
+- [x] Emisión de `elevated_token` con el claim `mfa_verified: true` y expiración de 10 minutos (`600 segundos`).
+- [x] Integración completa en `VaultScreen.tsx` con captura de `403`, modal 2FA, desbloqueo de bóveda y botón demostrativo para el Escenario #5 (`409 Conflict`).
+- [x] Batería de 5 pruebas automatizadas superadas al 100% (`backend-auth/src/tests/stepUpAntiReplay.test.ts`).

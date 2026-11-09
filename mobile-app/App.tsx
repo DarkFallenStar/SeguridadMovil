@@ -121,8 +121,8 @@ export default function App() {
     };
   }, []);
 
-  // Actualizar el estado de sesión visible cuando el access_token se renueva en RAM
-  const syncSessionFromMemory = useCallback(async () => {
+  // Actualizar el estado de sesión visible cuando el access_token o elevated_token se renueva en RAM
+  const syncSessionFromMemory = useCallback(async (mfaVerifiedOverride?: boolean) => {
     const currentRamToken = tokenMemoryStore.getAccessToken();
     const expiresAt = tokenMemoryStore.getExpiresAt();
     const hasRefresh = !!(await secureStorageService.getRefreshToken());
@@ -132,6 +132,8 @@ export default function App() {
       accessToken: currentRamToken,
       accessTokenExpiresAt: expiresAt,
       hasRefreshToken: hasRefresh,
+      mfaVerified:
+        typeof mfaVerifiedOverride === 'boolean' ? mfaVerifiedOverride : prev.mfaVerified,
     }));
   }, []);
 
@@ -175,7 +177,10 @@ export default function App() {
         />
       )}
       {currentScreen === 'VAULT' && (
-        <VaultScreen onBack={() => setCurrentScreen('DASHBOARD')} />
+        <VaultScreen
+          onBack={() => setCurrentScreen('DASHBOARD')}
+          onSessionUpdated={syncSessionFromMemory}
+        />
       )}
       {currentScreen === 'TOTP' && (
         <TotpScreen onBack={() => setCurrentScreen('DASHBOARD')} />

@@ -1,13 +1,15 @@
 import { Router, Request, Response } from 'express';
 import { refreshTokensStore, DEFAULT_USER } from '../services/oauthService.js';
-import { signJwt } from '../services/jwtService.js';
+import { signJwt, verifyJwt } from '../services/jwtService.js';
 import { tokenController } from '../controllers/oauthController.js';
 import {
   getUserTotpSecret,
   setUserTotpSecret,
   buildOtpAuthUri,
   generateTOTP,
+  verifyTOTPWithClockSkew,
 } from '../services/totpValidator.js';
+import { checkAndRegisterTotpCode } from '../services/antiReplayService.js';
 
 export const authRouter = Router();
 
@@ -249,4 +251,86 @@ authRouter.post('/mfa/setup', (req: Request, res: Response) => {
     });
   }
 });
+
+/**
+ * POST /auth/mfa/verify
+ * Verificación de Segundo Factor TOTP (Step-Up Authentication) y Protección Anti-Replay:
+ * 1. Valida el step_up_token.
+ * 2. Verifica el código TOTP de 6 dígitos en las tres ventanas C-1, C y C+1 (Clock Skew).
+ * 3. Consulta la Caché Anti-Replay (TTL 90s): si ya fue usado, devuelve 409 Conflict.
+ * 4. Emite el elevated_token con claim mfa_verified: true (expiración corta: 10 minutos = 600s).
+ */
+authRouter.post('/mfa/verify', (req: Request, res: Response) => {
+  const { step_up_token, code, totp_code } = req.body;
+  const submittedCode = String(code ?? totp_code ?? '').trim();
+
+  if (!step_up_token || typeof step_up_token !== 'string' || !submittedCode) {
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Se requieren step_up_token y el código TOTP de 6 dígitos.',
+    });
+  }
+
+  const tokenVerification = verifyJwt(step_up_token);
+  if (!tokenVerification.valid || !tokenVerification.payload) {
+    return res.status(401).json({
+      error: 'invalid_step_up_token',
+      message: tokenVerification.error || 'El step_up_token es inválido o ha expirado.',
+    });
+  }
+
+  const { userId, email, tokenType } = tokenVerification.payload;
+  if (tokenType !== 'step_up') {
+    return res.status(401).json({
+      error: 'invalid_token_type',
+      message: 'El token proporcionado no corresponde a un desafío step_up.',
+    });
+  }
+
+  const userSecret = getUserTotpSecret(userId);
+  const totpCheck = verifyTOTPWithClockSkew(submittedCode, userSecret);
+
+  if (!totpCheck.valid || totpCheck.matchedCounter === undefined) {
+    console.warn(`[MFA VERIFY] ❌ Código TOTP inválido (${submittedCode}) para ${email}`);
+    return res.status(401).json({
+      error: 'invalid_totp_code',
+      message: 'Código TOTP inválido o fuera de las ventanas de tolerancia (C-1, C, C+1).',
+    });
+  }
+
+  // Control Anti-Replay en Memoria (TTL de 90 segundos)
+  const replayCheck = checkAndRegisterTotpCode(userId, submittedCode, totpCheck.matchedCounter);
+  if (!replayCheck.allowed) {
+    console.warn(`[ANTI-REPLAY] 🚨 409 Conflict: Replay Attack Detectado para ${email} con código ${submittedCode}`);
+    return res.status(409).json({
+      error: 'replay_attack_detected',
+      message: '409 Conflict: Replay Attack Detected. Este código TOTP ya fue utilizado dentro de los últimos 90 segundos.',
+    });
+  }
+
+  // Emitir elevated_token con claim mfa_verified: true y vigencia de 10 minutos (600 segundos)
+  const elevatedToken = signJwt(
+    {
+      userId,
+      email,
+      tokenType: 'elevated',
+      mfa_verified: true,
+    },
+    600
+  );
+
+  console.log(
+    `[MFA VERIFY] ✅ Step-Up 2FA exitoso para ${email} (ventana C${totpCheck.windowOffset! >= 0 ? '+' : ''}${totpCheck.windowOffset}). Emitido elevated_token (10 min).`
+  );
+
+  return res.status(200).json({
+    elevated_token: elevatedToken,
+    access_token: elevatedToken,
+    token_type: 'Bearer',
+    expires_in: 600,
+    mfa_verified: true,
+    window_offset: totpCheck.windowOffset,
+  });
+});
+
 

@@ -36,3 +36,4 @@
 - [x] Si se ingresa una URI con `algorithm=SHA256`, `digits=8` o `period=60`, el validador la rechaza con un mensaje descriptivo.
 - [x] Al cerrar y reabrir la app en Modo Avión, la semilla configurada se recupera desde `SecureStore`.
 - [x] El backend expone `http://localhost:3000/auth/mfa/setup` mostrando el QR escaneable para la Prueba de Aceptación #2.
+
