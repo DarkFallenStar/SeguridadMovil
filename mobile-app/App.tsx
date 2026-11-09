@@ -65,6 +65,62 @@ export default function App() {
     return () => setOnSessionExpiredListener(null);
   }, [handleLogout]);
 
+  // Bootstrap al arrancar o recargar la app:
+  // La memoria RAM está vacía (access_token = null), pero verificamos si existe un
+  // refresh_token cifrado en el hardware (SecureStore) para restaurar la sesión silenciosamente.
+  useEffect(() => {
+    let isMounted = true;
+
+    const bootstrapSessionFromSecureStore = async () => {
+      try {
+        const storedRefreshToken = await secureStorageService.getRefreshToken();
+        if (!storedRefreshToken) {
+          return;
+        }
+
+        console.log('[Bootstrap] 🔐 refresh_token encontrado en SecureStore. Ejecutando Silent Refresh inicial...');
+        const response = await fetch(`${CONFIG.API_BASE_URL}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: storedRefreshToken }),
+        });
+
+        if (!response.ok) {
+          console.warn('[Bootstrap] ⚠️ refresh_token expirado o inválido en el servidor. Limpiando SecureStore.');
+          await secureStorageService.deleteRefreshToken();
+          return;
+        }
+
+        const data = await response.json();
+        const expiresIn = data.expires_in || 300;
+
+        // Guardar el nuevo access_token exclusivamente en memoria RAM
+        tokenMemoryStore.setAccessToken(data.access_token, expiresIn);
+
+        if (isMounted) {
+          setSession({
+            userId: data.user?.id || 'user_unisabana_01',
+            email: data.user?.email || 'estudiante@unisabana.edu.co',
+            accessToken: data.access_token,
+            accessTokenExpiresAt: Date.now() + expiresIn * 1000,
+            hasRefreshToken: true,
+            mfaVerified: false,
+          });
+          setCurrentScreen('DASHBOARD');
+          console.log('[Bootstrap] ✅ Sesión restaurada silenciosamente en RAM desde SecureStore.');
+        }
+      } catch (err) {
+        console.warn('[Bootstrap] Error al intentar restaurar sesión al inicio:', err);
+      }
+    };
+
+    bootstrapSessionFromSecureStore();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   // Actualizar el estado de sesión visible cuando el access_token se renueva en RAM
   const syncSessionFromMemory = useCallback(async () => {
     const currentRamToken = tokenMemoryStore.getAccessToken();

@@ -15,6 +15,7 @@ export interface AuthCodeData {
   state: string;
   userId: string;
   email: string;
+  approved: boolean;
   expiresAt: number; // Unix ms
 }
 
@@ -29,6 +30,7 @@ export interface RefreshTokenRecord {
 
 // Almacenes en memoria para authorization codes y refresh tokens
 const authCodesStore = new Map<string, AuthCodeData>();
+const authCodesByStateStore = new Map<string, AuthCodeData>();
 export const refreshTokensStore = new Map<string, RefreshTokenRecord>();
 
 // Usuario de prueba predeterminado según la guía del taller
@@ -47,6 +49,7 @@ export function createAuthorizationCode(params: {
   codeChallenge: string;
   codeChallengeMethod: 'S256';
   state: string;
+  approved?: boolean;
 }): string {
   const code = 'auth_code_' + crypto.randomBytes(24).toString('base64url');
 
@@ -59,11 +62,43 @@ export function createAuthorizationCode(params: {
     state: params.state,
     userId: DEFAULT_USER.id,
     email: DEFAULT_USER.email,
-    expiresAt: Date.now() + 60 * 1000, // Código válido por 60 segundos
+    approved: params.approved ?? false,
+    expiresAt: Date.now() + 180 * 1000, // Código válido por 3 minutos
   };
 
   authCodesStore.set(code, authCodeData);
+  authCodesByStateStore.set(params.state, authCodeData);
   return code;
+}
+
+/**
+ * Marca un authorization_code como explícitamente aprobado por el usuario en el navegador del sistema.
+ */
+export function approveAuthorizationCode(code: string, state: string): AuthCodeData | null {
+  const record = authCodesStore.get(code);
+  if (!record || record.state !== state || Date.now() > record.expiresAt) {
+    return null;
+  }
+  record.approved = true;
+  return record;
+}
+
+/**
+ * Consulta si la sesión asociada a un parámetro `state` ya fue autorizada por el usuario en el navegador.
+ * Esto permite recuperar el callback incluso cuando fabricantes Android (como Vivo/Xiaomi) o Firefox
+ * bloquean el intent de retorno hacia el contenedor Expo Go.
+ */
+export function getApprovedAuthCodeByState(state: string): AuthCodeData | null {
+  const record = authCodesByStateStore.get(state);
+  if (!record) {
+    return null;
+  }
+  if (Date.now() > record.expiresAt) {
+    authCodesByStateStore.delete(state);
+    authCodesStore.delete(record.code);
+    return null;
+  }
+  return record.approved ? record : null;
 }
 
 /**
@@ -103,6 +138,7 @@ export function exchangeCodeForTokens(params: {
 
   // Eliminar inmediatamente para garantizar que el código es de un solo uso (Anti-Replay)
   authCodesStore.delete(params.code);
+  authCodesByStateStore.delete(authCodeData.state);
 
   if (Date.now() > authCodeData.expiresAt) {
     throw { status: 400, error: 'invalid_grant', message: 'El authorization_code ha expirado.' };
@@ -153,4 +189,3 @@ export function exchangeCodeForTokens(params: {
     user: DEFAULT_USER,
   };
 }
-

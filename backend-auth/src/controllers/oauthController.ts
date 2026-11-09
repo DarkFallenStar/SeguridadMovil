@@ -1,11 +1,34 @@
 import { Request, Response } from 'express';
-import { createAuthorizationCode, exchangeCodeForTokens, DEFAULT_USER } from '../services/oauthService.js';
+import {
+  createAuthorizationCode,
+  approveAuthorizationCode,
+  getApprovedAuthCodeByState,
+  exchangeCodeForTokens,
+  DEFAULT_USER,
+} from '../services/oauthService.js';
+
+/**
+ * Construye el enlace Deep Link estándar y el enlace Android Intent explícito para Expo Go.
+ */
+function buildDeepLinks(redirectUri: string, code: string, state: string) {
+  const separator = redirectUri.includes('?') ? '&' : '?';
+  const targetDeepLink = `${redirectUri}${separator}code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`;
+
+  let androidIntentLink = targetDeepLink;
+  if (targetDeepLink.startsWith('exp://')) {
+    const withoutScheme = targetDeepLink.replace(/^exp:\/\//, '');
+    androidIntentLink = `intent://${withoutScheme}#Intent;scheme=exp;package=host.exp.exponent;end`;
+  } else if (targetDeepLink.startsWith('unisabana-auth://')) {
+    const withoutScheme = targetDeepLink.replace(/^unisabana-auth:\/\//, '');
+    androidIntentLink = `intent://${withoutScheme}#Intent;scheme=unisabana-auth;end`;
+  }
+
+  return { targetDeepLink, androidIntentLink };
+}
 
 /**
  * GET /oauth/authorize
  * Renderiza la pantalla de consentimiento del Servidor de Autorización en el navegador del sistema.
- * Genera el authorization_code y proporciona enlaces directos compatibles con todos los navegadores
- * móviles (Chrome, Firefox, Safari, y navegadores de fabricantes como Vivo/Xiaomi).
  */
 export function authorizeGetController(req: Request, res: Response) {
   const {
@@ -15,7 +38,6 @@ export function authorizeGetController(req: Request, res: Response) {
     code_challenge,
     code_challenge_method,
     state,
-    scope,
   } = req.query;
 
   console.log(`\n===================================================`);
@@ -26,7 +48,6 @@ export function authorizeGetController(req: Request, res: Response) {
   console.log(` - state (Anti-CSRF):     ${state}`);
   console.log(`===================================================\n`);
 
-  // Validaciones del protocolo OAuth 2.0 (RFC 6749 y RFC 7636)
   if (!client_id || client_id !== 'unisabana-mobile-client') {
     return res.status(400).send('Error OAuth: client_id inválido o ausente.');
   }
@@ -51,24 +72,21 @@ export function authorizeGetController(req: Request, res: Response) {
     return res.status(400).send('Error OAuth: parámetro state requerido para protección Anti-CSRF.');
   }
 
-  // Generar de antemano el authorization_code vinculado al code_challenge
+  // Generar el authorization_code vinculado al code_challenge (pendiente de clic de aprobación)
   const code = createAuthorizationCode({
     clientId: client_id,
     redirectUri: redirect_uri,
     codeChallenge: code_challenge,
     codeChallengeMethod: 'S256',
     state,
+    approved: false,
   });
 
-  // Construir el Deep Link exacto de retorno
-  const separator = redirect_uri.includes('?') ? '&' : '?';
-  const targetDeepLink = `${redirect_uri}${separator}code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`;
+  const { targetDeepLink, androidIntentLink } = buildDeepLinks(redirect_uri, code, state);
+  const isAndroid = /android/i.test(String(req.headers['user-agent'] || ''));
+  const primaryReturnLink = isAndroid ? androidIntentLink : targetDeepLink;
+  const approveApiUrl = `/oauth/approve?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}&mode=json`;
 
-  console.log(`[OAUTH SERVER] 🔗 Deep Link generado para retorno a la App:`);
-  console.log(`   ${targetDeepLink}\n`);
-
-  // Renderizar la página segura con enlace directo <a> y auto-redirección
-  // Esto elimina bloqueos de POST 302 en Chrome de Android y teléfonos Vivo/Xiaomi
   const html = `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -133,18 +151,21 @@ export function authorizeGetController(req: Request, res: Response) {
       display: flex;
       justify-content: space-between;
       margin-bottom: 6px;
+      gap: 8px;
     }
     .detail-row:last-child {
       margin-bottom: 0;
     }
     .label {
       color: #64748B;
+      flex-shrink: 0;
     }
     .value {
       font-family: monospace;
       font-weight: 600;
       color: #38BDF8;
       word-break: break-all;
+      text-align: right;
     }
     .btn {
       display: block;
@@ -154,35 +175,27 @@ export function authorizeGetController(req: Request, res: Response) {
       text-decoration: none;
       border: none;
       border-radius: 10px;
-      padding: 14px;
+      padding: 15px;
       font-size: 15px;
       font-weight: 700;
       cursor: pointer;
       box-sizing: border-box;
-      transition: background 0.2s;
+      transition: background-color 0.15s ease;
     }
-    .btn:hover {
+    .btn:active {
       background-color: #1D4ED8;
     }
-    .note {
-      font-size: 11px;
-      color: #64748B;
-      margin-top: 14px;
-      line-height: 15px;
+    .btn-success {
+      background-color: #22C55E !important;
+      color: #0F172A !important;
     }
   </style>
-  <script>
-    function triggerRedirect() {
-      // Redirección directa por JavaScript
-      window.location.assign("${targetDeepLink}");
-    }
-  </script>
 </head>
 <body>
   <div class="card">
     <div class="badge">Navegador Seguro • RFC 7636</div>
-    <h1>Iniciar Sesión UniSabana</h1>
-    <p>La aplicación móvil está solicitando acceso delegado a tu identidad mediante OAuth 2.0 y PKCE.</p>
+    <h1 id="title-text">Iniciar Sesión UniSabana</h1>
+    <p id="subtitle-text">La aplicación móvil solicita autorización delegada mediante OAuth 2.0 + PKCE.</p>
 
     <div class="details">
       <div class="detail-row">
@@ -194,20 +207,59 @@ export function authorizeGetController(req: Request, res: Response) {
         <span class="value">${client_id}</span>
       </div>
       <div class="detail-row">
-        <span class="label">Método PKCE:</span>
-        <span class="value">S256 (SHA-256)</span>
+        <span class="label">PKCE Challenge:</span>
+        <span class="value">${code_challenge.substring(0, 16)}...</span>
+      </div>
+      <div class="detail-row">
+        <span class="label">Retorno:</span>
+        <span class="value">${redirect_uri}</span>
       </div>
     </div>
 
-    <!-- Enlace directo <a> que el navegador procesa con interacción directa del usuario -->
-    <a href="${targetDeepLink}" class="btn" id="btn-autorizar" onclick="triggerRedirect()">
+    <a href="${primaryReturnLink}" class="btn" id="btn-autorizar">
       Autorizar y Regresar a la App Móvil
     </a>
-
-    <p class="note">
-      📱 Si tu teléfono (Vivo, Xiaomi, etc.) solicita confirmación, pulsa <strong>"Abrir con Expo Go"</strong> o <strong>"Permitir"</strong>.
-    </p>
   </div>
+
+  <script>
+    (function() {
+      var btn = document.getElementById('btn-autorizar');
+      var approveUrl = ${JSON.stringify(approveApiUrl)};
+      var deepLink = ${JSON.stringify(targetDeepLink)};
+      var notified = false;
+
+      function notifyApproval() {
+        if (notified) return;
+        notified = true;
+        try {
+          if (navigator.sendBeacon) {
+            navigator.sendBeacon(approveUrl);
+          }
+          fetch(approveUrl, { method: 'GET', keepalive: true }).catch(function() {});
+        } catch (e) {}
+      }
+
+      // Notificar al backend apenas el dedo toca el botón (antes del click)
+      // sin cancelar el gesto nativo del enlace <a> hacia el Intent/DeepLink
+      btn.addEventListener('touchstart', notifyApproval, { passive: true });
+      btn.addEventListener('pointerdown', notifyApproval, { passive: true });
+      btn.addEventListener('mousedown', notifyApproval, { passive: true });
+
+      btn.addEventListener('click', function() {
+        notifyApproval();
+        btn.classList.add('btn-success');
+        btn.textContent = '✅ ¡Autorizado! Regresando a la App...';
+
+        // Respaldo inmediato por si el navegador prefiere el esquema directo exp:// o window.close()
+        setTimeout(function() {
+          window.location.href = deepLink;
+          setTimeout(function() {
+            try { window.close(); } catch (e) {}
+          }, 200);
+        }, 250);
+      });
+    })();
+  </script>
 </body>
 </html>`;
 
@@ -215,7 +267,65 @@ export function authorizeGetController(req: Request, res: Response) {
 }
 
 /**
- * POST /oauth/authorize (Compatibilidad con formularios)
+ * GET /oauth/approve
+ * Registra la aprobación del usuario en el servidor y ejecuta el retorno inmediato hacia la App.
+ */
+export function approveGetController(req: Request, res: Response) {
+  const { code, state, mode } = req.query;
+
+  if (!code || typeof code !== 'string' || !state || typeof state !== 'string') {
+    return res.status(400).send('Parámetros de aprobación inválidos.');
+  }
+
+  const record = approveAuthorizationCode(code, state);
+  if (!record) {
+    return res.status(400).send('La sesión de autorización expiró o no es válida. Vuelve a la app e intenta de nuevo.');
+  }
+
+  const { targetDeepLink } = buildDeepLinks(record.redirectUri, record.code, record.state);
+
+  console.log(`[OAUTH SERVER] ✅ Usuario autorizó sesión en el navegador (state: ${state}).`);
+  console.log(`[OAUTH SERVER] 🚀 Redirigiendo a Deep Link: ${targetDeepLink}`);
+
+  if (mode === 'json') {
+    return res.status(200).json({
+      approved: true,
+      code: record.code,
+      state: record.state,
+      callbackUrl: targetDeepLink,
+    });
+  }
+
+  return res.redirect(302, targetDeepLink);
+}
+
+/**
+ * GET /oauth/session-status
+ * Permite a la app móvil verificar si el usuario ya aprobó el consentimiento en el navegador del sistema
+ * cuando el fabricante del teléfono (ej. Vivo Funtouch OS) o Firefox bloquea el intent exp:// de Expo Go.
+ */
+export function sessionStatusController(req: Request, res: Response) {
+  const { state } = req.query;
+  if (!state || typeof state !== 'string') {
+    return res.status(400).json({ approved: false, error: 'missing_state' });
+  }
+
+  const record = getApprovedAuthCodeByState(state);
+  if (!record) {
+    return res.status(200).json({ approved: false });
+  }
+
+  const { targetDeepLink } = buildDeepLinks(record.redirectUri, record.code, record.state);
+  return res.status(200).json({
+    approved: true,
+    code: record.code,
+    state: record.state,
+    callbackUrl: targetDeepLink,
+  });
+}
+
+/**
+ * POST /oauth/authorize (Para pruebas automatizadas y clientes HTTP directos)
  */
 export function authorizePostController(req: Request, res: Response) {
   const {
@@ -236,11 +346,10 @@ export function authorizePostController(req: Request, res: Response) {
     codeChallenge: code_challenge,
     codeChallengeMethod: code_challenge_method || 'S256',
     state,
+    approved: true,
   });
 
-  const separator = redirect_uri.includes('?') ? '&' : '?';
-  const targetDeepLink = `${redirect_uri}${separator}code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`;
-
+  const { targetDeepLink } = buildDeepLinks(redirect_uri, code, state);
   return res.redirect(302, targetDeepLink);
 }
 
@@ -279,6 +388,7 @@ export function tokenController(req: Request, res: Response) {
       redirectUri: redirect_uri || 'unisabana-auth://callback',
     });
 
+    console.log(`[OAUTH SERVER] 🎟️ Token Exchange PKCE exitoso para ${tokenResponse.user.email}`);
     return res.status(200).json(tokenResponse);
   } catch (err: any) {
     const status = err.status || 500;

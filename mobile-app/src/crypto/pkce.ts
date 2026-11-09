@@ -21,6 +21,15 @@ export function toBase64UrlUnpadded(base64: string): string {
     .replace(/=+$/, '');
 }
 
+function generateRandomUrlSafeString(length: number): string {
+  const randomBytes = Crypto.getRandomValues(new Uint8Array(length));
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += CHARSET[randomBytes[i] % CHARSET.length];
+  }
+  return result;
+}
+
 /**
  * Genera un code_verifier criptográficamente seguro de alta entropía.
  * @param length Longitud de la cadena (por defecto 64, RFC exige entre 43 y 128).
@@ -29,13 +38,7 @@ export function generateCodeVerifier(length: number = 64): string {
   if (length < 43 || length > 128) {
     throw new Error('RFC 7636 exige que code_verifier tenga entre 43 y 128 caracteres.');
   }
-
-  const randomBytes = Crypto.getRandomValues(new Uint8Array(length));
-  let result = '';
-  for (let i = 0; i < length; i++) {
-    result += CHARSET[randomBytes[i] % CHARSET.length];
-  }
-  return result;
+  return generateRandomUrlSafeString(length);
 }
 
 /**
@@ -57,11 +60,6 @@ export async function generateCodeChallenge(codeVerifier: string): Promise<strin
  * @param length Longitud del state (32 caracteres).
  */
 export function generateRandomState(length: number = 32): string {
-  const randomBytes = Crypto.getRandomValues(new Uint8Array(length));
-  let result = '';
-  for (let i = 0; i < length; i++) {
-    result += CHARSET[randomBytes[i] % CHARSET.length];
-  }
-  return result;
+  return generateRandomUrlSafeString(length);
 }
 

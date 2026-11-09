@@ -201,3 +201,4 @@ runSilentRefreshSecurityTests().catch((err) => {
   console.error('Error fatal durante pruebas:', err);
   process.exit(1);
 });
+

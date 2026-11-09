@@ -1,8 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { refreshTokensStore, DEFAULT_USER } from '../services/oauthService.js';
 import { signJwt } from '../services/jwtService.js';
+import { tokenController } from '../controllers/oauthController.js';
 
 export const authRouter = Router();
+
+// Alias compatible con la Sección 2 de la Guía (POST /auth/oauth/token)
+authRouter.post('/oauth/token', tokenController);
 
 // Contador de renovaciones para auditoría en pruebas de concurrencia
 export let refreshRequestsCount = 0;
@@ -68,6 +72,11 @@ authRouter.post('/refresh', (req: Request, res: Response) => {
     access_token: newAccessToken,
     token_type: 'Bearer',
     expires_in: 300,
+    user: {
+      id: tokenRecord.userId,
+      email: tokenRecord.email,
+      name: DEFAULT_USER.name,
+    },
   });
 });
 

@@ -30,4 +30,7 @@ export const CONFIG = {
     REFRESH_TOKEN: 'unisabana_secure_refresh_token',
     TOTP_SEED: 'unisabana_secure_totp_seed',
   },
+  TOTP: {
+    DEFAULT_SECRET_BASE32: 'JBSWY3DPEHPK3PXP',
+  },
 };
