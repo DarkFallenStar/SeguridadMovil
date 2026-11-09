@@ -1,7 +1,7 @@
 # ESTADO DEL PROYECTO (PROJECT STATUS)
 **Proyecto:** Taller de Seguridad Móvil (UniSabana)  
 **Última actualización:** 2026-11-08  
-**Fase actual:** FASES 6 Y 7 COMPLETADAS (4/4 Puntos del Taller Implementados) — Esperando aprobación para FASES 8 Y 9 (Auditoría Final, README y Guía de Sustentación)  
+**Fase actual:** PROYECTO 100% COMPLETADO (Fases 0 a 9 Finalizadas y Verificadas)  
 **Repositorio Remoto:** https://github.com/DarkFallenStar/SeguridadMovil.git  
 
 ---
@@ -16,8 +16,8 @@
 | **Fase 3** | Almacenamiento seguro nativo y Silent Refresh Queue | **Completado** | `specs/003-token-management/` | **Aprobado** |
 | **Fase 4** | Algoritmo TOTP desde cero (RFC 6238 en Modo Avión) | **Completado** | `specs/004-totp-authenticator/` | **Aprobado** |
 | **Fase 5** | Configuración de Semilla TOTP (QR Camera + Manual + SecureStore) | **Completado** | `specs/005-seed-provisioning/` | **Aprobado** |
-| **Fases 6/7** | Backend Bóveda, Step-Up Authentication y Caché Anti-Replay (TTL 90s) | **Completado** | `specs/007-step-up-anti-replay/` | **En validación usuario** |
-| **Fases 8/9** | Integración global, Matriz de Trazabilidad, `README.md` y Guía de Sustentación (5 min) | **Siguiente** | `specs/009-audit-demonstration/` | Pendiente |
+| **Fases 6/7** | Backend Bóveda, Step-Up Authentication y Caché Anti-Replay (TTL 90s) | **Completado** | `specs/007-step-up-anti-replay/` | **Aprobado** |
+| **Fases 8/9** | Integración global, Matriz de Trazabilidad, `README.md` y Guía de Sustentación (5 min) | **Completado** | `specs/009-audit-demonstration/` | **Aprobado** |
 
 ---
 
@@ -37,13 +37,9 @@
 
 ---
 
-## 3. CHECKLIST DE VERIFICACIÓN DE FASES 6 Y 7 (STEP-UP AUTHENTICATION & ANTI-REPLAY)
-- [x] Protección de `GET /api/boveda-critica` (y alias `GET /api/boveda`) en `backend-auth/src/routes/apiRoutes.ts`.
-- [x] Rechazo de sesiones normales (`mfa_verified: false`) con `403 Forbidden`, `error: "mfa_required"` y emisión de `step_up_token`.
-- [x] Endpoint `POST /auth/mfa/verify` en `backend-auth/src/routes/authRoutes.ts`.
-- [x] Tolerancia a desfase de reloj (*Clock Skew*) validando en las 3 ventanas: $C-1$ ($t-30\text{s}$), $C$ ($t$) y $C+1$ ($t+30\text{s}$).
-- [x] Caché Anti-Replay en memoria (`Map` en `backend-auth/src/services/antiReplayService.ts`) con TTL de 90 segundos.
-- [x] Rechazo inmediato con `409 Conflict: Replay Attack Detected` al intentar reutilizar un código TOTP dentro de los 90 segundos.
-- [x] Emisión de `elevated_token` con el claim `mfa_verified: true` y expiración de 10 minutos (`600 segundos`).
-- [x] Integración completa en `VaultScreen.tsx` con captura de `403`, modal 2FA, desbloqueo de bóveda y botón demostrativo para el Escenario #5 (`409 Conflict`).
-- [x] Batería de 5 pruebas automatizadas superadas al 100% (`backend-auth/src/tests/stepUpAntiReplay.test.ts`).
+## 3. CHECKLIST GLOBAL DE CIERRE (100% COMPLETADO)
+- [x] **Punto 1 (OAuth 2.0 + PKCE):** `code_verifier` CSPRNG, `code_challenge` SHA-256 Base64URL, `expo-web-browser`, Deep Link `unisabana-auth://` y validación anti-CSRF `state`.
+- [x] **Punto 2 (Almacenamiento Híbrido y Silent Refresh):** `access_token` solo en RAM (5 min), `refresh_token` en `expo-secure-store` (30 días), interceptor `401` con cola de concurrencia (`Silent Refresh Queue`) y persistencia tras reinicio de app.
+- [x] **Punto 3 (Autenticador TOTP RFC 6238):** Decodificador Base32, contador 64-bit Big-Endian, HMAC-SHA1, Dynamic Truncation, cámara QR (`expo-camera`) + entrada manual, anillo regresivo de 30s, paridad con Google Authenticator y funcionamiento en Modo Avión.
+- [x] **Punto 4 (Step-Up Auth y Anti-Replay):** `GET /api/boveda-critica` rechaza tokens sin MFA (`403 mfa_required` + `step_up_token`), `POST /auth/mfa/verify` valida ventanas $C-1, C, C+1$, caché Anti-Replay en memoria (`Map` TTL 90s) bloquea reuso con `409 Conflict` y emite `elevated_token` (`mfa_verified: true`, 10 min).
+- [x] **Documentación y Sustentación:** Matriz de trazabilidad (`specs/009-audit-demonstration/spec.md`) y `README.md` con guía de sustentación en vivo de 5 minutos.

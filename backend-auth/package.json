@@ -7,7 +7,11 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:totp": "tsx src/tests/totp.test.ts",
+    "test:stepup": "tsx src/tests/stepUpAntiReplay.test.ts",
+    "test:pkce": "tsx src/tests/pkce.test.ts",
+    "test:refresh": "tsx src/tests/silentRefresh.test.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",

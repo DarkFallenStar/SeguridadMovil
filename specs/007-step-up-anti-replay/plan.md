@@ -59,3 +59,4 @@ sequenceDiagram
   - Permitir ingresar el código TOTP (con botón opcional de lectura rápida del TOTP local para agilidad en la sustentación de 5 minutos).
   - Actualizar el token en `tokenMemoryStore` con el `elevated_token` (10 min), notificar a `App.tsx` (`mfaVerified: true`) y cargar los datos reales de la bóveda.
   - Incluir botón demostrativo **"🛡️ Probar Ataque de Repetición (Reenviar Código Usado)"** para demostrar en vivo el `409 Conflict` (Escenario #5 de la sustentación).
+

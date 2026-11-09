@@ -31,3 +31,4 @@
 - [x] Al consultar `GET /api/boveda-critica` con sesión estándar (`mfa_verified: false`), el servidor responde `403 Forbidden` (`error: "mfa_required"`) y la app abre automáticamente el modal de 2FA.
 - [x] Al ingresar el código TOTP de 6 dígitos en el modal, el backend lo valida en $C-1, C, C+1$, retorna el `elevated_token` (10 min), la app reemplaza el token en RAM y desbloquea la Bóveda Crítica.
 - [x] Si se reenvía el mismo código TOTP recién utilizado dentro de los 90 segundos, el backend responde `409 Conflict: Replay Attack Detected`.
+
