@@ -2,6 +2,8 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import { HealthResponse, ApiErrorResponse } from './types/index.js';
 import { oauthRouter } from './routes/oauthRoutes.js';
+import { authRouter } from './routes/authRoutes.js';
+import { apiRouter } from './routes/apiRoutes.js';
 
 export const app = express();
 
@@ -12,6 +14,12 @@ app.use(express.urlencoded({ extended: true }));
 
 // Rutas de OAuth 2.0 y PKCE
 app.use('/oauth', oauthRouter);
+
+// Rutas de Autenticación, Silent Refresh y Logout
+app.use('/auth', authRouter);
+
+// Rutas de API y Recursos Protegidos
+app.use('/api', apiRouter);
 
 // Endpoint de verificacion de salud (Health Check)
 app.get('/health', (_req: Request, res: Response<HealthResponse>) => {

@@ -11,3 +11,4 @@ export const oauthRouter = Router();
 oauthRouter.get('/authorize', authorizeGetController);
 oauthRouter.post('/authorize', authorizePostController);
 oauthRouter.post('/token', tokenController);
+

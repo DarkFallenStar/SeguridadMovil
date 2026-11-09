@@ -1,7 +1,7 @@
 # ESTADO DEL PROYECTO (PROJECT STATUS)
 **Proyecto:** Taller de Seguridad Móvil (UniSabana)  
 **Última actualización:** 2026-11-08  
-**Fase actual:** FASE 2 COMPLETADA — Esperando aprobación para iniciar FASE 3  
+**Fase actual:** FASE 3 COMPLETADA — Esperando aprobación para iniciar FASE 4  
 **Repositorio Remoto:** https://github.com/DarkFallenStar/SeguridadMovil.git  
 
 ---
@@ -13,8 +13,8 @@
 | **Fase 0** | Auditoría, diagnóstico y marco SDD | **Completado** | `.specify/memory/constitution.md` | **Aprobado** |
 | **Fase 1** | Arquitectura y estructura base (Monorepo) | **Completado** | `specs/001-project-foundation/` | **Aprobado** |
 | **Fase 2** | OAuth 2.0 con PKCE & Deep Linking | **Completado** | `specs/002-oauth-pkce/` | **Aprobado** |
-| **Fase 3** | Almacenamiento seguro nativo y Silent Refresh Queue | **Siguiente** | `specs/003-token-management/` | Pendiente |
-| **Fase 4** | Algoritmo TOTP desde cero (RFC 6238 en Modo Avión) | Planificado | `specs/004-totp-authenticator/` | Pendiente |
+| **Fase 3** | Almacenamiento seguro nativo y Silent Refresh Queue | **Completado** | `specs/003-token-management/` | **Aprobado** |
+| **Fase 4** | Algoritmo TOTP desde cero (RFC 6238 en Modo Avión) | **Siguiente** | `specs/004-totp-authenticator/` | Pendiente |
 | **Fase 5** | Configuración de Semilla TOTP (QR Camera + Manual) | Planificado | `specs/005-seed-provisioning/` | Pendiente |
 | **Fase 6** | Backend de autenticación, bóveda y sesiones | Planificado | `specs/006-auth-backend/` | Pendiente |
 | **Fase 7** | Step-Up Authentication y Anti-Replay Cache | Planificado | `specs/007-step-up-anti-replay/` | Pendiente |
@@ -37,14 +37,16 @@
 
 ---
 
-## 3. CHECKLIST DE VERIFICACIÓN DE FASE 2 (OAUTH 2.0 + PKCE)
-- [x] Generador criptográfico de `code_verifier` (64 caracteres URL-safe de alta entropía).
-- [x] Generador de `code_challenge` mediante SHA-256 codificado en Base64URL sin relleno (*unpadded*).
-- [x] Generador de parámetro `state` aleatorio (32 chars) y validación estricta Anti-CSRF al retornar del Deep Link.
-- [x] Configuración del esquema `"scheme": "unisabana-auth"` en `mobile-app/app.json`.
-- [x] Navegador seguro del sistema (`expo-web-browser`) con `WebBrowser.openAuthSessionAsync` (WebViews prohibidas).
-- [x] Backend OAuth Server: endpoints `GET /oauth/authorize`, `POST /oauth/authorize` y `POST /oauth/token`.
-- [x] Validación PKCE en backend: comprobación en tiempo constante de `SHA256(verifier) === challenge`.
-- [x] Single-use / Anti-Replay del `authorization_code` (invalidado inmediatamente tras el intercambio).
-- [x] Emisión de `access_token` JWT con TTL de exactamente 5 minutos (300s) y `refresh_token` con 30 días.
-- [x] Batería de 5 pruebas automatizadas superadas al 100% (`backend-auth/src/tests/pkce.test.ts`).
+## 3. CHECKLIST DE VERIFICACIÓN DE FASE 3 (ALMACENAMIENTO SEGURO & SILENT REFRESH)
+- [x] Separación de memoria: `access_token` vive únicamente en memoria volátil (RAM - `tokenMemoryStore`). Vida útil: 5 minutos.
+- [x] `refresh_token` se persiste en hardware cifrado (`expo-secure-store`: Keychain / Keystore). Vida útil: 30 días.
+- [x] Prohibición absoluta de `AsyncStorage` o texto plano cumplida.
+- [x] Cliente HTTP centralizado con interceptor (`apiFetch` en `mobile-app/src/services/apiClient.ts`).
+- [x] Detección de código HTTP `401 Unauthorized` en el interceptor.
+- [x] Silent Refresh Queue: Pausa peticiones subsecuentes y encola llamadas concurrentes en `failedQueue`.
+- [x] Una ÚNICA petición `POST /auth/refresh` ejecutada ante múltiples llamadas simultáneas.
+- [x] Actualización automática del `access_token` en RAM y reintento exitoso de todas las peticiones encoladas.
+- [x] Cierre de sesión automático (`onSessionExpiredListener`) cuando el refresh token expira o es revocado.
+- [x] Endpoint `POST /auth/refresh` y `POST /auth/logout` en el backend.
+- [x] Recurso protegido `GET /api/test-protected` con middleware `requireAccessToken`.
+- [x] Batería de 5 pruebas automatizadas superadas al 100% (`backend-auth/src/tests/silentRefresh.test.ts`).

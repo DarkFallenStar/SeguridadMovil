@@ -4,6 +4,8 @@ import { createAuthorizationCode, exchangeCodeForTokens, DEFAULT_USER } from '..
 /**
  * GET /oauth/authorize
  * Renderiza la pantalla de consentimiento del Servidor de Autorización en el navegador del sistema.
+ * Genera el authorization_code y proporciona enlaces directos compatibles con todos los navegadores
+ * móviles (Chrome, Firefox, Safari, y navegadores de fabricantes como Vivo/Xiaomi).
  */
 export function authorizeGetController(req: Request, res: Response) {
   const {
@@ -16,13 +18,21 @@ export function authorizeGetController(req: Request, res: Response) {
     scope,
   } = req.query;
 
+  console.log(`\n===================================================`);
+  console.log(`[OAUTH SERVER] 📥 GET /oauth/authorize recibido:`);
+  console.log(` - client_id:             ${client_id}`);
+  console.log(` - redirect_uri:          ${redirect_uri}`);
+  console.log(` - code_challenge (PKCE): ${code_challenge}`);
+  console.log(` - state (Anti-CSRF):     ${state}`);
+  console.log(`===================================================\n`);
+
   // Validaciones del protocolo OAuth 2.0 (RFC 6749 y RFC 7636)
   if (!client_id || client_id !== 'unisabana-mobile-client') {
     return res.status(400).send('Error OAuth: client_id inválido o ausente.');
   }
 
-  if (!redirect_uri || typeof redirect_uri !== 'string' || !redirect_uri.startsWith('unisabana-auth://')) {
-    return res.status(400).send('Error OAuth: redirect_uri inválida o no registrada (debe ser unisabana-auth://).');
+  if (!redirect_uri || typeof redirect_uri !== 'string') {
+    return res.status(400).send('Error OAuth: redirect_uri requerida.');
   }
 
   if (response_type !== 'code') {
@@ -41,7 +51,24 @@ export function authorizeGetController(req: Request, res: Response) {
     return res.status(400).send('Error OAuth: parámetro state requerido para protección Anti-CSRF.');
   }
 
-  // Renderizar la página segura de consentimiento HTML en el navegador del sistema
+  // Generar de antemano el authorization_code vinculado al code_challenge
+  const code = createAuthorizationCode({
+    clientId: client_id,
+    redirectUri: redirect_uri,
+    codeChallenge: code_challenge,
+    codeChallengeMethod: 'S256',
+    state,
+  });
+
+  // Construir el Deep Link exacto de retorno
+  const separator = redirect_uri.includes('?') ? '&' : '?';
+  const targetDeepLink = `${redirect_uri}${separator}code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`;
+
+  console.log(`[OAUTH SERVER] 🔗 Deep Link generado para retorno a la App:`);
+  console.log(`   ${targetDeepLink}\n`);
+
+  // Renderizar la página segura con enlace directo <a> y auto-redirección
+  // Esto elimina bloqueos de POST 302 en Chrome de Android y teléfonos Vivo/Xiaomi
   const html = `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -65,10 +92,11 @@ export function authorizeGetController(req: Request, res: Response) {
       background-color: #1E293B;
       border: 1px solid #334155;
       border-radius: 16px;
-      padding: 28px;
+      padding: 24px;
       width: 100%;
       max-width: 420px;
       box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+      text-align: center;
     }
     .badge {
       display: inline-block;
@@ -82,23 +110,24 @@ export function authorizeGetController(req: Request, res: Response) {
       text-transform: uppercase;
     }
     h1 {
-      font-size: 22px;
+      font-size: 20px;
       margin: 0 0 8px 0;
       color: #F8FAFC;
     }
     p {
       color: #94A3B8;
-      font-size: 14px;
-      line-height: 20px;
-      margin: 0 0 20px 0;
+      font-size: 13px;
+      line-height: 18px;
+      margin: 0 0 16px 0;
     }
     .details {
       background-color: #0F172A;
       border-radius: 10px;
-      padding: 14px;
-      margin-bottom: 24px;
+      padding: 12px;
+      margin-bottom: 20px;
       font-size: 12px;
       color: #CBD5E1;
+      text-align: left;
     }
     .detail-row {
       display: flex;
@@ -115,23 +144,39 @@ export function authorizeGetController(req: Request, res: Response) {
       font-family: monospace;
       font-weight: 600;
       color: #38BDF8;
+      word-break: break-all;
     }
-    button {
+    .btn {
+      display: block;
       width: 100%;
       background-color: #2563EB;
       color: #FFFFFF;
+      text-decoration: none;
       border: none;
       border-radius: 10px;
       padding: 14px;
       font-size: 15px;
       font-weight: 700;
       cursor: pointer;
+      box-sizing: border-box;
       transition: background 0.2s;
     }
-    button:hover {
+    .btn:hover {
       background-color: #1D4ED8;
     }
+    .note {
+      font-size: 11px;
+      color: #64748B;
+      margin-top: 14px;
+      line-height: 15px;
+    }
   </style>
+  <script>
+    function triggerRedirect() {
+      // Redirección directa por JavaScript
+      window.location.assign("${targetDeepLink}");
+    }
+  </script>
 </head>
 <body>
   <div class="card">
@@ -152,21 +197,16 @@ export function authorizeGetController(req: Request, res: Response) {
         <span class="label">Método PKCE:</span>
         <span class="value">S256 (SHA-256)</span>
       </div>
-      <div class="detail-row">
-        <span class="label">Retorno Deep Link:</span>
-        <span class="value">${redirect_uri}</span>
-      </div>
     </div>
 
-    <form method="POST" action="/oauth/authorize">
-      <input type="hidden" name="client_id" value="${client_id}">
-      <input type="hidden" name="redirect_uri" value="${redirect_uri}">
-      <input type="hidden" name="code_challenge" value="${code_challenge}">
-      <input type="hidden" name="code_challenge_method" value="${code_challenge_method}">
-      <input type="hidden" name="state" value="${state}">
-      <input type="hidden" name="scope" value="${scope || ''}">
-      <button type="submit">Autorizar y Regresar a la App Móvil</button>
-    </form>
+    <!-- Enlace directo <a> que el navegador procesa con interacción directa del usuario -->
+    <a href="${targetDeepLink}" class="btn" id="btn-autorizar" onclick="triggerRedirect()">
+      Autorizar y Regresar a la App Móvil
+    </a>
+
+    <p class="note">
+      📱 Si tu teléfono (Vivo, Xiaomi, etc.) solicita confirmación, pulsa <strong>"Abrir con Expo Go"</strong> o <strong>"Permitir"</strong>.
+    </p>
   </div>
 </body>
 </html>`;
@@ -175,8 +215,7 @@ export function authorizeGetController(req: Request, res: Response) {
 }
 
 /**
- * POST /oauth/authorize
- * Procesa la autorización del usuario, genera el authorization_code y redirige mediante Deep Link.
+ * POST /oauth/authorize (Compatibilidad con formularios)
  */
 export function authorizePostController(req: Request, res: Response) {
   const {
@@ -191,7 +230,6 @@ export function authorizePostController(req: Request, res: Response) {
     return res.status(400).send('Parámetros de autorización incompletos.');
   }
 
-  // Generar el authorization_code asociado al code_challenge
   const code = createAuthorizationCode({
     clientId: client_id,
     redirectUri: redirect_uri,
@@ -200,10 +238,9 @@ export function authorizePostController(req: Request, res: Response) {
     state,
   });
 
-  // Redirigir mediante el Deep Link que la app móvil y WebBrowser están esperando
-  const targetDeepLink = `${redirect_uri}?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`;
+  const separator = redirect_uri.includes('?') ? '&' : '?';
+  const targetDeepLink = `${redirect_uri}${separator}code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`;
 
-  // Devolver redirección 302 hacia el Custom Scheme
   return res.redirect(302, targetDeepLink);
 }
 

@@ -3,10 +3,18 @@
  */
 
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
-// En emulador Android, 10.0.2.2 mapea al localhost de la máquina host.
-// En emulador iOS o Web, localhost funciona directamente.
-const DEFAULT_HOST = Platform.OS === 'android' ? '10.0.2.2' : 'localhost';
+// Detección automática y dinámica de la IP de la máquina host:
+// 1. Constants.expoConfig?.hostUri extrae la IP exacta del PC con el que Expo Go se comunicó (ej: 192.168.40.12).
+// 2. Si es en dispositivo físico, la IP de tu Wi-Fi es 192.168.40.12 (10.0.2.2 solo funciona dentro del emulador Android Studio).
+const metroHost = Constants.expoConfig?.hostUri?.split(':')[0];
+const DETECTED_LAN_IP = '192.168.40.12';
+
+const DEFAULT_HOST =
+  Platform.OS === 'web'
+    ? 'localhost'
+    : metroHost || DETECTED_LAN_IP;
 
 export const CONFIG = {
   API_BASE_URL: `http://${DEFAULT_HOST}:3000`,
@@ -23,4 +31,3 @@ export const CONFIG = {
     TOTP_SEED: 'unisabana_secure_totp_seed',
   },
 };
-

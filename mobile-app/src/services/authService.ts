@@ -43,11 +43,17 @@ export async function loginWithOAuthPKCE(): Promise<OAuthTokensResult> {
     // 3. Generar parámetro state aleatorio único para protección Anti-CSRF
     const state = generateRandomState(32);
 
-    // 4. Construir la URL del Servidor de Autorización
+    // 4. Resolver dinámicamente el redirect_uri:
+    // En Expo Go genera exp://... (reconocido por el SO para Expo Go).
+    // En standalone build genera unisabana-auth://callback.
+    const dynamicRedirectUri = Linking.createURL('callback');
+    console.log('[OAuth PKCE] Redirect URI resuelta dinámicamente:', dynamicRedirectUri);
+
+    // 5. Construir la URL del Servidor de Autorización
     const queryParams = new URLSearchParams({
       response_type: CONFIG.OAUTH.RESPONSE_TYPE,
       client_id: CONFIG.OAUTH.CLIENT_ID,
-      redirect_uri: CONFIG.OAUTH.REDIRECT_URI,
+      redirect_uri: dynamicRedirectUri,
       scope: 'openid profile vault',
       state,
       code_challenge: codeChallenge,
@@ -56,14 +62,14 @@ export async function loginWithOAuthPKCE(): Promise<OAuthTokensResult> {
 
     const authUrl = `${CONFIG.OAUTH.AUTHORIZE_ENDPOINT}?${queryParams.toString()}`;
 
-    // 5. Abrir la sesión segura en el navegador del sistema operativo
-    // WebBrowser.openAuthSessionAsync captura automáticamente la redirección al esquema unisabana-auth://
+    // 6. Abrir la sesión segura en el navegador del sistema operativo
+    // WebBrowser.openAuthSessionAsync captura automáticamente la redirección
     const authResult = await WebBrowser.openAuthSessionAsync(
       authUrl,
-      CONFIG.OAUTH.REDIRECT_URI
+      dynamicRedirectUri
     );
 
-    // 6. Manejar la respuesta del navegador del sistema
+    // 7. Manejar la respuesta del navegador del sistema
     if (authResult.type === 'cancel' || authResult.type === 'dismiss') {
       return {
         success: false,
@@ -80,7 +86,7 @@ export async function loginWithOAuthPKCE(): Promise<OAuthTokensResult> {
       };
     }
 
-    // 7. Parsear la URL de retorno del Deep Link: unisabana-auth://callback?code=...&state=...
+    // 8. Parsear la URL de retorno del Deep Link: callback?code=...&state=...
     const parsed = Linking.parse(authResult.url);
     const returnedCode = parsed.queryParams?.code;
     const returnedState = parsed.queryParams?.state;
@@ -93,7 +99,7 @@ export async function loginWithOAuthPKCE(): Promise<OAuthTokensResult> {
       };
     }
 
-    // 8. Validación Anti-CSRF estricta:
+    // 9. Validación Anti-CSRF estricta:
     // Si el state recibido no coincide exactamente con el generado en memoria, abortar inmediatamente.
     if (!returnedState || returnedState !== state) {
       return {
@@ -103,7 +109,7 @@ export async function loginWithOAuthPKCE(): Promise<OAuthTokensResult> {
       };
     }
 
-    // 9. Token Exchange (Intercambio de Código por Tokens en Backend):
+    // 10. Token Exchange (Intercambio de Código por Tokens en Backend):
     // Se envía el authorization_code junto con el code_verifier original
     const tokenResponse = await fetch(CONFIG.OAUTH.TOKEN_ENDPOINT, {
       method: 'POST',
@@ -115,7 +121,7 @@ export async function loginWithOAuthPKCE(): Promise<OAuthTokensResult> {
         code: returnedCode,
         code_verifier: codeVerifier,
         client_id: CONFIG.OAUTH.CLIENT_ID,
-        redirect_uri: CONFIG.OAUTH.REDIRECT_URI,
+        redirect_uri: dynamicRedirectUri,
       }),
     });
 
@@ -129,7 +135,7 @@ export async function loginWithOAuthPKCE(): Promise<OAuthTokensResult> {
       };
     }
 
-    // 10. Retornar tokens legítimos emitidos por el backend
+    // 11. Retornar tokens legítimos emitidos por el backend
     return {
       success: true,
       accessToken: tokenData.access_token,
