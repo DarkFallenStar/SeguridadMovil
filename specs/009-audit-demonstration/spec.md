@@ -34,3 +34,4 @@ Con los 4 puntos técnicos del taller implementados y verificados en un disposit
 3. **Escenario 3 (Minuto 3 — Prueba de Fuego en Modo Avión):** Con el dispositivo en **Modo Avión** (Wi-Fi y datos apagados), el autenticador TOTP sigue generando nuevos códigos cada 30 segundos demostrando cálculo local puro (`Date.now() / 1000 / 30`).
 4. **Escenario 4 (Minuto 4 — Step-Up y Acceso a Bóveda):** Desactivar Modo Avión, abrir "Bóveda Crítica", observar la intercepción `403 Forbidden (mfa_required)`, ingresar el código TOTP en el modal emergente y desbloquear los secretos de `GET /api/boveda-critica` con el `elevated_token` (`mfa_verified: true`).
 5. **Escenario 5 (Minuto 5 — Ataque de Repetición / Anti-Replay):** Tocar el botón "Reenviar el MISMO código TOTP (`XXXXXX`)" antes de que pasen 90 segundos y verificar que el backend responde `409 Conflict: Replay Attack Detected`.
+
